@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useCalendar } from '../hooks/useCalendar';
 import UserProfile from './UserProfile';
+import EventModal from './EventModal';
 
 interface CalendarDay {
   date: number;
@@ -24,6 +25,7 @@ interface CalendarEvent {
     timeZone?: string;
   };
   location?: string;
+  calendarId?: string;
 }
 
 interface GoogleUser {
@@ -42,13 +44,19 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   
   const { 
     todaysEvents, 
     events, 
+    calendars,
     isLoading, 
     error, 
     lastUpdated,
+    createEvent,
+    updateEvent,
+    deleteEvent,
     refresh 
   } = useCalendar(true);
 
@@ -128,6 +136,42 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
   useEffect(() => {
     generateCalendar();
   }, [currentDate, events]);
+
+  const handleCreateEvent = async (eventData: Partial<CalendarEvent>) => {
+    const calendarId = eventData.calendarId || calendars.find(c => c.primary)?.id || 'primary';
+    await createEvent(calendarId, eventData);
+  };
+
+  const handleUpdateEvent = async (eventData: Partial<CalendarEvent>) => {
+    if (!editingEvent) return;
+    const calendarId = editingEvent.calendarId || 'primary';
+    await updateEvent(calendarId, editingEvent.id, eventData);
+  };
+
+  const handleDeleteEvent = async (event: CalendarEvent) => {
+    const confirmed = confirm(`Delete "${event.summary}"?`);
+    if (confirmed) {
+      const calendarId = event.calendarId || 'primary';
+      await deleteEvent(calendarId, event.id);
+    }
+  };
+
+  const openCreateEventModal = (date?: Date) => {
+    setEditingEvent(null);
+    setSelectedDate(date || null);
+    setIsEventModalOpen(true);
+  };
+
+  const openEditEventModal = (event: CalendarEvent) => {
+    setEditingEvent(event);
+    setIsEventModalOpen(true);
+  };
+
+  const closeEventModal = () => {
+    setIsEventModalOpen(false);
+    setEditingEvent(null);
+    setSelectedDate(null);
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -222,7 +266,13 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
                   : ''
                 }
               `}
-              onClick={() => setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day.date))}
+              onClick={() => {
+                const clickedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day.date);
+                setSelectedDate(clickedDate);
+                if (day.isCurrentMonth) {
+                  openCreateEventModal(clickedDate);
+                }
+              }}
             >
               <span className="text-xs">{day.date}</span>
               
@@ -264,16 +314,30 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
                 key={event.id}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="event-card flex items-center space-x-2"
+                className="event-card flex items-center space-x-2 group cursor-pointer"
+                onClick={() => openEditEventModal(event)}
               >
                 <div className="w-2 h-2 rounded-full bg-blue-500" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{event.summary}</p>
+                  <p className="text-xs font-medium truncate group-hover:text-blue-400 transition-colors">
+                    {event.summary}
+                  </p>
                   <p className="text-[10px] text-gray-500 dark:text-gray-400">
                     {formatEventTime(event)}
                     {event.location && ` • ${event.location}`}
                   </p>
                 </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteEvent(event);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-red-400"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
               </motion.div>
             ))
           ) : (
@@ -286,10 +350,23 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
 
       {/* Quick add button */}
       <div className="p-4 pt-2">
-        <button className="interactive w-full py-2 px-4 glass-strong rounded-lg text-sm font-medium hover-glass transition-all duration-200">
+        <button 
+          onClick={() => openCreateEventModal()}
+          className="interactive w-full py-2 px-4 glass-strong rounded-lg text-sm font-medium hover-glass transition-all duration-200"
+        >
           + Add Event
         </button>
       </div>
+
+      {/* Event Modal */}
+      <EventModal
+        isOpen={isEventModalOpen}
+        onClose={closeEventModal}
+        onSave={editingEvent ? handleUpdateEvent : handleCreateEvent}
+        event={editingEvent}
+        calendars={calendars}
+        defaultDate={selectedDate || undefined}
+      />
     </div>
   );
 };

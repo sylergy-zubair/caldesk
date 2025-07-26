@@ -15,6 +15,7 @@ export interface CalendarEvent {
   location?: string;
   colorId?: string;
   htmlLink?: string;
+  calendarId?: string;
   creator?: {
     email: string;
     displayName?: string;
