@@ -1,31 +1,56 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useCalendar } from '../hooks/useCalendar';
+import UserProfile from './UserProfile';
 
 interface CalendarDay {
   date: number;
   isCurrentMonth: boolean;
   isToday: boolean;
-  events: Event[];
+  events: CalendarEvent[];
 }
 
-interface Event {
+interface CalendarEvent {
   id: string;
-  title: string;
-  time: string;
-  color: string;
+  summary: string;
+  start: {
+    dateTime?: string;
+    date?: string;
+    timeZone?: string;
+  };
+  end: {
+    dateTime?: string;
+    date?: string;
+    timeZone?: string;
+  };
+  location?: string;
 }
 
-const CalendarWidget: React.FC = () => {
+interface GoogleUser {
+  id: string;
+  email: string;
+  name: string;
+  picture?: string;
+}
+
+interface CalendarWidgetProps {
+  user: GoogleUser;
+  onLogout: () => Promise<void>;
+}
+
+const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-
-  // Mock events for demo
-  const mockEvents: Event[] = [
-    { id: '1', title: 'Team Meeting', time: '10:00 AM', color: 'bg-blue-500' },
-    { id: '2', title: 'Lunch Break', time: '12:30 PM', color: 'bg-green-500' },
-    { id: '3', title: 'Code Review', time: '3:00 PM', color: 'bg-purple-500' },
-  ];
+  
+  const { 
+    todaysEvents, 
+    events, 
+    isLoading, 
+    error, 
+    lastUpdated,
+    refresh 
+  } = useCalendar(true);
 
   const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const months = [
@@ -36,6 +61,17 @@ const CalendarWidget: React.FC = () => {
   useEffect(() => {
     generateCalendar();
   }, [currentDate]);
+
+  const getEventsForDate = (date: Date): CalendarEvent[] => {
+    if (!events.length) return [];
+    
+    const dateStr = date.toISOString().split('T')[0];
+    
+    return events.filter(event => {
+      const eventDate = event.start.date || event.start.dateTime?.split('T')[0];
+      return eventDate === dateStr;
+    });
+  };
 
   const generateCalendar = () => {
     const year = currentDate.getFullYear();
@@ -61,7 +97,7 @@ const CalendarWidget: React.FC = () => {
         date: currentDay.getDate(),
         isCurrentMonth,
         isToday,
-        events: isToday ? mockEvents : []
+        events: getEventsForDate(new Date(currentDay))
       });
       
       currentDay.setDate(currentDay.getDate() + 1);
@@ -70,43 +106,90 @@ const CalendarWidget: React.FC = () => {
     setCalendarDays(days);
   };
 
+  const formatEventTime = (event: CalendarEvent): string => {
+    if (event.start.date) {
+      return 'All day';
+    }
+    
+    if (event.start.dateTime) {
+      const time = new Date(event.start.dateTime);
+      return time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    
+    return '';
+  };
+
   const navigateMonth = (direction: 'prev' | 'next') => {
     const newDate = new Date(currentDate);
     newDate.setMonth(currentDate.getMonth() + (direction === 'next' ? 1 : -1));
     setCurrentDate(newDate);
   };
 
+  useEffect(() => {
+    generateCalendar();
+  }, [currentDate, events]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-white/10">
-        <button
-          onClick={() => navigateMonth('prev')}
-          className="interactive p-2 rounded-lg hover-glass transition-all duration-200"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        
-        <motion.h2 
-          key={currentDate.getMonth()}
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => navigateMonth('prev')}
+            className="interactive p-2 rounded-lg hover-glass transition-all duration-200"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          
+          <motion.h2 
+            key={currentDate.getMonth()}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-lg font-semibold"
+          >
+            {months[currentDate.getMonth()]} {currentDate.getFullYear()}
+          </motion.h2>
+          
+          <button
+            onClick={() => navigateMonth('next')}
+            className="interactive p-2 rounded-lg hover-glass transition-all duration-200"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          {/* Refresh button */}
+          <button
+            onClick={refresh}
+            disabled={isLoading}
+            className="interactive p-2 rounded-lg hover-glass transition-all duration-200 disabled:opacity-50"
+            title="Refresh calendar"
+          >
+            <svg className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+
+          {/* User profile */}
+          <UserProfile user={user} onLogout={onLogout} />
+        </div>
+      </div>
+
+      {/* Error message */}
+      {error && (
+        <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-lg font-semibold"
+          className="mx-4 mt-2 p-2 glass rounded-lg border border-red-500/20 bg-red-500/10"
         >
-          {months[currentDate.getMonth()]} {currentDate.getFullYear()}
-        </motion.h2>
-        
-        <button
-          onClick={() => navigateMonth('next')}
-          className="interactive p-2 rounded-lg hover-glass transition-all duration-200"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-      </div>
+          <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+        </motion.div>
+      )}
 
       {/* Calendar */}
       <div className="flex-1 p-4">
@@ -149,8 +232,8 @@ const CalendarWidget: React.FC = () => {
                   {day.events.slice(0, 2).map((event) => (
                     <div
                       key={event.id}
-                      className="w-full h-1 bg-white/80 rounded-full"
-                      title={`${event.title} at ${event.time}`}
+                      className="w-full h-1 bg-blue-500/80 rounded-full"
+                      title={`${event.summary} ${formatEventTime(event)}`}
                     />
                   ))}
                   {day.events.length > 2 && (
@@ -165,22 +248,39 @@ const CalendarWidget: React.FC = () => {
 
       {/* Today's events */}
       <div className="border-t border-white/10 p-4">
-        <h3 className="text-sm font-medium mb-2">Today's Events</h3>
-        <div className="space-y-2 max-h-20 overflow-y-auto">
-          {mockEvents.map((event) => (
-            <motion.div
-              key={event.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="event-card flex items-center space-x-2"
-            >
-              <div className={`w-2 h-2 rounded-full ${event.color}`} />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate">{event.title}</p>
-                <p className="text-[10px] text-gray-500 dark:text-gray-400">{event.time}</p>
-              </div>
-            </motion.div>
-          ))}
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-medium">Today's Events</h3>
+          {lastUpdated && (
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {lastUpdated.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+        
+        <div className="space-y-2 max-h-24 overflow-y-auto">
+          {todaysEvents.length > 0 ? (
+            todaysEvents.map((event) => (
+              <motion.div
+                key={event.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="event-card flex items-center space-x-2"
+              >
+                <div className="w-2 h-2 rounded-full bg-blue-500" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{event.summary}</p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                    {formatEventTime(event)}
+                    {event.location && ` • ${event.location}`}
+                  </p>
+                </div>
+              </motion.div>
+            ))
+          ) : (
+            <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
+              {isLoading ? 'Loading events...' : 'No events today'}
+            </p>
+          )}
         </div>
       </div>
 

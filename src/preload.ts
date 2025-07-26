@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+console.log('🔧 Preload script starting...');
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -15,15 +17,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // System information
   getPlatform: () => process.platform,
   
-  // Future: Google Calendar API bridge
-  // googleAuth: () => ipcRenderer.invoke('google-auth'),
-  // googleCalendar: {
-  //   getEvents: (params: any) => ipcRenderer.invoke('google-calendar-get-events', params),
-  //   createEvent: (event: any) => ipcRenderer.invoke('google-calendar-create-event', event),
-  //   updateEvent: (eventId: string, event: any) => ipcRenderer.invoke('google-calendar-update-event', eventId, event),
-  //   deleteEvent: (eventId: string) => ipcRenderer.invoke('google-calendar-delete-event', eventId),
-  // }
+  // Authentication
+  googleAuth: () => ipcRenderer.invoke('google-auth'),
+  loadStoredAuth: () => ipcRenderer.invoke('load-stored-auth'),
+  logout: () => ipcRenderer.invoke('logout'),
+  
+  // Google Calendar API
+  googleCalendar: {
+    getCalendars: () => ipcRenderer.invoke('get-calendars'),
+    getEvents: (filter?: any) => ipcRenderer.invoke('get-events', filter),
+    getTodaysEvents: () => ipcRenderer.invoke('get-todays-events'),
+    createEvent: (calendarId: string, eventData: any) => ipcRenderer.invoke('create-event', calendarId, eventData),
+    updateEvent: (calendarId: string, eventId: string, eventData: any) => ipcRenderer.invoke('update-event', calendarId, eventId, eventData),
+    deleteEvent: (calendarId: string, eventId: string) => ipcRenderer.invoke('delete-event', calendarId, eventId),
+  }
 });
+
+console.log('✅ Preload script completed - electronAPI should be available');
 
 // Type definitions for the exposed API
 declare global {
@@ -35,6 +45,17 @@ declare global {
       saveSettings: (settings: any) => Promise<void>;
       loadSettings: () => Promise<any>;
       getPlatform: () => string;
+      googleAuth: () => Promise<{ tokens: any; user: any }>;
+      loadStoredAuth: () => Promise<{ tokens: any; user: any } | null>;
+      logout: () => Promise<void>;
+      googleCalendar: {
+        getCalendars: () => Promise<any[]>;
+        getEvents: (filter?: any) => Promise<any[]>;
+        getTodaysEvents: () => Promise<any[]>;
+        createEvent: (calendarId: string, eventData: any) => Promise<any>;
+        updateEvent: (calendarId: string, eventId: string, eventData: any) => Promise<any>;
+        deleteEvent: (calendarId: string, eventId: string) => Promise<void>;
+      };
     };
   }
 }
