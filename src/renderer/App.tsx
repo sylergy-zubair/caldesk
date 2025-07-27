@@ -42,17 +42,16 @@ const App: React.FC = () => {
   console.log('App render - isLoading:', isLoading, 'isAuthenticated:', isAuthenticated, 'user:', user, 'error:', error);
 
   return (
-    <div className={theme}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-        className="w-full h-full p-4"
-      >
-        <div className="glass-strong rounded-2xl shadow-2xl w-full h-full overflow-hidden">
+    <motion.div
+      initial={{ opacity: 0, scale: 0 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="w-full h-full rounded-2xl"
+    >
+      <div className="glass rounded-2xl shadow-xl w-full h-full overflow-hidden">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
-              <div className="flex flex-col items-center space-y-4">
+              <div className="flex flex-c l items-center space-y-4">
                 <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin" />
                 <p className="text-sm text-gray-600 dark:text-gray-400">Loading CalDesk...</p>
                 <p className="text-xs text-gray-500">Initializing services...</p>
@@ -86,8 +85,7 @@ const App: React.FC = () => {
             />
           )}
         </div>
-      </motion.div>
-    </div>
+    </motion.div>
   );
 };
 
