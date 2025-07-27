@@ -34,29 +34,53 @@ export const useAuth = () => {
 
   // Load stored authentication on component mount
   useEffect(() => {
-    loadStoredAuth();
+    // Give a small delay to ensure the preload script has run
+    const timer = setTimeout(() => {
+      loadStoredAuth();
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, []);
 
   const loadStoredAuth = async () => {
     try {
       setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
       
+      console.log('Starting auth check...');
+      console.log('electronAPI available:', !!window.electronAPI);
+      console.log('loadStoredAuth available:', !!(window.electronAPI?.loadStoredAuth));
+      
       // Check if electronAPI is available
-      if (!window.electronAPI || !window.electronAPI.loadStoredAuth) {
-        console.warn('Electron API not available during initialization');
+      if (!window.electronAPI) {
+        console.error('Window electronAPI not available');
         setAuthState({
           isAuthenticated: false,
           user: null,
           tokens: null,
           isLoading: false,
-          error: null,
+          error: 'Electron API not found. Please restart the application.',
         });
         return;
       }
       
-      const authData = await window.electronAPI.loadStoredAuth();
+      if (!window.electronAPI.loadStoredAuth) {
+        console.error('loadStoredAuth method not available');
+        setAuthState({
+          isAuthenticated: false,
+          user: null,
+          tokens: null,
+          isLoading: false,
+          error: 'Authentication service not available. Please restart the application.',
+        });
+        return;
+      }
       
-      if (authData) {
+      console.log('Calling loadStoredAuth...');
+      const authData = await window.electronAPI.loadStoredAuth();
+      console.log('Auth data received:', authData);
+      
+      if (authData && authData.user) {
+        console.log('User found, setting authenticated state');
         setAuthState({
           isAuthenticated: true,
           user: authData.user,
@@ -65,6 +89,7 @@ export const useAuth = () => {
           error: null,
         });
       } else {
+        console.log('No user found, setting unauthenticated state');
         setAuthState({
           isAuthenticated: false,
           user: null,
@@ -75,12 +100,13 @@ export const useAuth = () => {
       }
     } catch (error) {
       console.error('Failed to load stored auth:', error);
+      // Don't show error, just proceed as unauthenticated
       setAuthState({
         isAuthenticated: false,
         user: null,
         tokens: null,
         isLoading: false,
-        error: 'Failed to load authentication',
+        error: null, // Remove the error to show login screen instead
       });
     }
   };

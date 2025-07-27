@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import { GoogleAuthService } from './services/googleAuth.js';
 import { GoogleCalendarService } from './services/googleCalendar.js';
 import { TokenStorageService } from './services/tokenStorage.js';
+import { WindowManager } from './services/windowManager.js';
+import { AutoStartManager } from './services/autoStart.js';
 
 // Load environment variables
 dotenv.config();
@@ -16,70 +18,15 @@ const __dirname = path.dirname(__filename);
 let authService: GoogleAuthService;
 let calendarService: GoogleCalendarService;
 let tokenStorage: TokenStorageService;
+let windowManager: WindowManager;
 
 let mainWindow: BrowserWindow | null = null;
 
 // Desktop widget configuration
 const createDesktopWidget = (): void => {
-  const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
-  
-  // Create the desktop widget window
-  mainWindow = new BrowserWindow({
-    width: 320,
-    height: 400,
-    x: screenWidth - 340, // Position near right edge
-    y: 20, // Position near top
-    frame: false, // Remove window frame
-    transparent: true, // Enable transparency
-    alwaysOnTop: false, // Don't stay on top of other windows
-    skipTaskbar: true, // Don't show in taskbar
-    resizable: true,
-    movable: true,
-    minimizable: false,
-    maximizable: false,
-    closable: true,
-    show: false, // Don't show until ready
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js'),
-    },
-  });
-
-  // Set window level for desktop widget behavior
-  if (process.platform === 'darwin') {
-    // macOS: Set to desktop level
-    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  } else if (process.platform === 'win32') {
-    // Windows: Set appropriate window level
-    mainWindow.setAlwaysOnTop(false);
-  }
-
-  // Load the app
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:3000');
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadFile(path.join(__dirname, 'renderer/index.html'));
-  }
-
-  // Show window when ready
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-  });
-
-  // Handle window closed
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-
-  // Prevent navigation away from the app
-  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
-    const parsedUrl = new URL(navigationUrl);
-    if (parsedUrl.origin !== 'http://localhost:3000' && parsedUrl.origin !== 'file://') {
-      event.preventDefault();
-    }
-  });
+  windowManager = new WindowManager();
+  mainWindow = windowManager.createWindow();
+  windowManager.createTray();
 };
 
 // Initialize services
@@ -222,6 +169,38 @@ const setupIpcHandlers = () => {
     }
   });
 
+  // Window controls
+  ipcMain.handle('minimize-window', () => {
+    windowManager?.hideWindow();
+  });
+
+  ipcMain.handle('close-window', () => {
+    windowManager?.hideWindow();
+  });
+
+  ipcMain.handle('toggle-always-on-top', () => {
+    const window = windowManager?.getWindow();
+    if (window) {
+      const current = window.isAlwaysOnTop();
+      windowManager?.toggleAlwaysOnTop(!current);
+      return !current;
+    }
+    return false;
+  });
+
+  ipcMain.handle('toggle-window', () => {
+    windowManager?.toggleWindow();
+  });
+
+  // Auto-start controls
+  ipcMain.handle('toggle-auto-start', () => {
+    return AutoStartManager.toggle();
+  });
+
+  ipcMain.handle('get-auto-start-status', () => {
+    return AutoStartManager.isEnabled();
+  });
+
   // Settings
   ipcMain.handle('save-settings', async (event, settings) => {
     // TODO: Implement settings storage
@@ -238,6 +217,7 @@ const setupIpcHandlers = () => {
 app.whenReady().then(() => {
   initializeServices();
   setupIpcHandlers();
+  AutoStartManager.initialize();
   createDesktopWidget();
 
   app.on('activate', () => {
@@ -249,9 +229,14 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // On macOS, keep app running even when all windows are closed
-  if (process.platform !== 'darwin') {
-    app.quit();
+  // Don't quit when all windows are closed - we want to keep running in the tray
+  // app.quit() will be called from the tray menu instead
+});
+
+app.on('before-quit', () => {
+  // Clean up window manager when quitting
+  if (windowManager) {
+    windowManager.destroy();
   }
 });
 

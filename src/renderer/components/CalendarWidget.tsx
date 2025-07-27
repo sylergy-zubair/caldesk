@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useCalendar } from '../hooks/useCalendar';
 import UserProfile from './UserProfile';
 import EventModal from './EventModal';
+import WindowControls from './WindowControls';
 
 interface CalendarDay {
   date: number;
@@ -175,6 +176,9 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Window Controls */}
+      <WindowControls />
+      
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-white/10">
         <div className="flex items-center space-x-2">

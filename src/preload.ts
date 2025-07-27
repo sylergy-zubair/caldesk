@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   maximizeWindow: () => ipcRenderer.invoke('maximize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
+  toggleAlwaysOnTop: () => ipcRenderer.invoke('toggle-always-on-top'),
+  toggleWindow: () => ipcRenderer.invoke('toggle-window'),
   
   // Settings persistence
   saveSettings: (settings: any) => ipcRenderer.invoke('save-settings', settings),
@@ -42,6 +44,8 @@ declare global {
       minimizeWindow: () => Promise<void>;
       maximizeWindow: () => Promise<void>;
       closeWindow: () => Promise<void>;
+      toggleAlwaysOnTop: () => Promise<boolean>;
+      toggleWindow: () => Promise<void>;
       saveSettings: (settings: any) => Promise<void>;
       loadSettings: () => Promise<any>;
       getPlatform: () => string;
