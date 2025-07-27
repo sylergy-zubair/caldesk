@@ -4,6 +4,7 @@ import { useCalendar } from '../hooks/useCalendar';
 import UserProfile from './UserProfile';
 import EventModal from './EventModal';
 import WindowControls from './WindowControls';
+import CalendarSettings from './CalendarSettings';
 
 interface CalendarDay {
   date: number;
@@ -47,6 +48,7 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
   const { 
     todaysEvents, 
@@ -80,6 +82,39 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
       const eventDate = event.start.date || event.start.dateTime?.split('T')[0];
       return eventDate === dateStr;
     });
+  };
+
+  const getDisplayEvents = (): CalendarEvent[] => {
+    if (selectedDate) {
+      return getEventsForDate(selectedDate);
+    }
+    return todaysEvents;
+  };
+
+  const getDisplayDateText = (): string => {
+    if (!selectedDate) return "Today's Events";
+    
+    const today = new Date();
+    const isToday = selectedDate.toDateString() === today.toDateString();
+    
+    if (isToday) return "Today's Events";
+    
+    const month = months[selectedDate.getMonth()];
+    const day = selectedDate.getDate();
+    return `${month} ${day} Events`;
+  };
+
+  const getEventColor = (event: CalendarEvent): string => {
+    // First check if event has a calendarId
+    if (event.calendarId) {
+      const calendar = calendars.find(cal => cal.id === event.calendarId);
+      if (calendar?.backgroundColor) {
+        return calendar.backgroundColor;
+      }
+    }
+    
+    // Fallback to default blue
+    return '#1976d2';
   };
 
   const generateCalendar = () => {
@@ -174,6 +209,17 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
     setSelectedDate(null);
   };
 
+  const handleCalendarToggle = async (calendarId: string, enabled: boolean) => {
+    // For now, we'll just refresh the events to reflect the change
+    // In a more sophisticated implementation, we'd store calendar preferences
+    console.log(`Calendar ${calendarId} ${enabled ? 'enabled' : 'disabled'}`);
+    
+    // Refresh events to reflect the calendar selection change
+    setTimeout(() => {
+      refresh();
+    }, 100);
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Window Controls */}
@@ -211,6 +257,18 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
         </div>
 
         <div className="flex items-center space-x-2">
+          {/* Calendar settings button */}
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="interactive p-2 rounded-lg hover-glass transition-all duration-200"
+            title="Calendar settings"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+
           {/* Refresh button */}
           <button
             onClick={refresh}
@@ -269,10 +327,21 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
                   ? 'bg-blue-500 text-white font-bold' 
                   : ''
                 }
+                ${selectedDate && 
+                  selectedDate.getDate() === day.date && 
+                  selectedDate.getMonth() === currentDate.getMonth() && 
+                  selectedDate.getFullYear() === currentDate.getFullYear() && 
+                  !day.isToday
+                  ? 'bg-blue-200 dark:bg-blue-800 text-blue-800 dark:text-blue-200 font-semibold' 
+                  : ''
+                }
               `}
               onClick={() => {
                 const clickedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day.date);
                 setSelectedDate(clickedDate);
+              }}
+              onDoubleClick={() => {
+                const clickedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day.date);
                 if (day.isCurrentMonth) {
                   openCreateEventModal(clickedDate);
                 }
@@ -286,7 +355,8 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
                   {day.events.slice(0, 2).map((event) => (
                     <div
                       key={event.id}
-                      className="w-full h-1 bg-blue-500/80 rounded-full"
+                      className="w-full h-1 rounded-full"
+                      style={{ backgroundColor: `${getEventColor(event)}CC` }} // Add transparency
                       title={`${event.summary} ${formatEventTime(event)}`}
                     />
                   ))}
@@ -303,7 +373,7 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
       {/* Today's events */}
       <div className="border-t border-white/10 p-4">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium">Today's Events</h3>
+          <h3 className="text-sm font-medium">{getDisplayDateText()}</h3>
           {lastUpdated && (
             <span className="text-xs text-gray-500 dark:text-gray-400">
               {lastUpdated.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
@@ -311,9 +381,9 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
           )}
         </div>
         
-        <div className="space-y-2 max-h-24 overflow-y-auto">
-          {todaysEvents.length > 0 ? (
-            todaysEvents.map((event) => (
+        <div className="space-y-2">
+          {getDisplayEvents().length > 0 ? (
+            getDisplayEvents().map((event) => (
               <motion.div
                 key={event.id}
                 initial={{ opacity: 0, x: -10 }}
@@ -321,7 +391,10 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
                 className="event-card flex items-center space-x-2 group cursor-pointer"
                 onClick={() => openEditEventModal(event)}
               >
-                <div className="w-2 h-2 rounded-full bg-blue-500" />
+                <div 
+                  className="w-2 h-2 rounded-full" 
+                  style={{ backgroundColor: getEventColor(event) }}
+                />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium truncate group-hover:text-blue-400 transition-colors">
                     {event.summary}
@@ -355,10 +428,10 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
       {/* Quick add button */}
       <div className="p-4 pt-2">
         <button 
-          onClick={() => openCreateEventModal()}
+          onClick={() => openCreateEventModal(selectedDate || undefined)}
           className="interactive w-full py-2 px-4 glass-strong rounded-lg text-sm font-medium hover-glass transition-all duration-200"
         >
-          + Add Event
+          + Add Event{selectedDate && !selectedDate.toDateString().includes(new Date().toDateString()) ? ` for ${months[selectedDate.getMonth()]} ${selectedDate.getDate()}` : ''}
         </button>
       </div>
 
@@ -370,6 +443,14 @@ const CalendarWidget: React.FC<CalendarWidgetProps> = ({ user, onLogout }) => {
         event={editingEvent}
         calendars={calendars}
         defaultDate={selectedDate || undefined}
+      />
+
+      {/* Calendar Settings Modal */}
+      <CalendarSettings
+        calendars={calendars}
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onCalendarToggle={handleCalendarToggle}
       />
     </div>
   );

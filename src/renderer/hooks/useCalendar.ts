@@ -103,7 +103,35 @@ export const useCalendar = (isAuthenticated: boolean) => {
     try {
       setCalendarState(prev => ({ ...prev, isLoading: true, error: null }));
       
-      const events = await window.electronAPI.googleCalendar.getEvents(filter);
+      // If no specific calendarIds provided, use all selected calendars
+      let eventFilter = filter;
+      if (!filter?.calendarIds) {
+        const calendars = await window.electronAPI.googleCalendar.getCalendars();
+        const selectedCalendarIds = calendars
+          .filter(cal => cal.selected !== false) // Include calendars that are not explicitly unselected
+          .map(cal => cal.id);
+        
+        eventFilter = { ...filter, calendarIds: selectedCalendarIds };
+      }
+      
+      const events = await window.electronAPI.googleCalendar.getEvents(eventFilter);
+      
+      // Schedule notifications for upcoming events (next 24 hours)
+      const upcomingEvents = events.filter(event => {
+        if (!event.start.dateTime) return false;
+        const eventStart = new Date(event.start.dateTime);
+        const now = new Date();
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        return eventStart > now && eventStart <= tomorrow;
+      });
+      
+      if (upcomingEvents.length > 0) {
+        try {
+          await window.electronAPI.notifications.scheduleEventNotifications(upcomingEvents);
+        } catch (notificationError) {
+          console.warn('Failed to schedule notifications:', notificationError);
+        }
+      }
       
       setCalendarState(prev => ({
         ...prev,
@@ -128,7 +156,22 @@ export const useCalendar = (isAuthenticated: boolean) => {
     if (!isAuthenticated) return;
 
     try {
-      const todaysEvents = await window.electronAPI.googleCalendar.getTodaysEvents();
+      // Get events from all calendars
+      const calendars = await window.electronAPI.googleCalendar.getCalendars();
+      const selectedCalendarIds = calendars
+        .filter(cal => cal.selected !== false) // Include calendars that are not explicitly unselected
+        .map(cal => cal.id);
+      
+      const todaysEvents = await window.electronAPI.googleCalendar.getTodaysEvents(selectedCalendarIds);
+      
+      // Schedule notifications for upcoming events
+      if (todaysEvents.length > 0) {
+        try {
+          await window.electronAPI.notifications.scheduleEventNotifications(todaysEvents);
+        } catch (notificationError) {
+          console.warn('Failed to schedule notifications:', notificationError);
+        }
+      }
       
       setCalendarState(prev => ({
         ...prev,

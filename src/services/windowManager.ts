@@ -16,19 +16,34 @@ export interface WindowSettings {
   autoHide?: boolean;
   showInTaskbar?: boolean;
   opacity?: number;
+  desktopWidget?: boolean; // True desktop widget mode
+  size?: 'small' | 'medium' | 'large' | 'custom';
+}
+
+export interface SizePreset {
+  width: number;
+  height: number;
+  label: string;
 }
 
 export class WindowManager {
   private window: BrowserWindow | null = null;
   private tray: Tray | null = null;
   private settingsPath: string;
+  private sizePresets: Record<string, SizePreset> = {
+    small: { width: 320, height: 450, label: 'Small' },
+    medium: { width: 380, height: 600, label: 'Medium' },
+    large: { width: 450, height: 750, label: 'Large' },
+  };
   private defaultSettings: WindowSettings = {
-    width: 320,
-    height: 400,
+    width: 380,
+    height: 600,
     alwaysOnTop: false,
     autoHide: false,
     showInTaskbar: false,
     opacity: 0.95,
+    desktopWidget: true, // Enable desktop widget mode by default
+    size: 'medium',
   };
 
   constructor() {
@@ -52,7 +67,7 @@ export class WindowManager {
     console.log('Preload script path:', preloadPath);
     console.log('Preload script exists:', fs.existsSync(preloadPath));
 
-    this.window = new BrowserWindow({
+    const windowOptions: any = {
       width: settings.width || this.defaultSettings.width,
       height: settings.height || this.defaultSettings.height,
       x: settings.x ?? defaultX,
@@ -73,7 +88,27 @@ export class WindowManager {
         contextIsolation: true,
         preload: preloadPath,
       },
-    });
+    };
+
+    // Configure for desktop widget mode
+    if (settings.desktopWidget ?? this.defaultSettings.desktopWidget) {
+      if (process.platform === 'win32') {
+        // Windows: Use type 'desktop' to place behind other windows
+        windowOptions.type = 'desktop';
+        windowOptions.alwaysOnTop = false;
+        windowOptions.skipTaskbar = true;
+      } else if (process.platform === 'darwin') {
+        // macOS: Set window level to desktop
+        windowOptions.level = 'desktop';
+        windowOptions.alwaysOnTop = false;
+      } else {
+        // Linux: Use type 'desktop'
+        windowOptions.type = 'desktop';
+        windowOptions.alwaysOnTop = false;
+      }
+    }
+
+    this.window = new BrowserWindow(windowOptions);
 
     // Platform-specific window behavior
     this.configurePlatformBehavior();
@@ -119,6 +154,12 @@ export class WindowManager {
         checked: true, // Default to show in taskbar
         click: (menuItem) => this.toggleTaskbar(menuItem.checked),
       },
+      {
+        label: 'Desktop Widget Mode',
+        type: 'checkbox',
+        checked: this.loadSettings().desktopWidget ?? this.defaultSettings.desktopWidget,
+        click: (menuItem) => this.toggleDesktopWidget(menuItem.checked),
+      },
       { type: 'separator' },
       {
         label: 'Start with System',
@@ -127,6 +168,29 @@ export class WindowManager {
         click: () => AutoStartManager.toggle(),
       },
       { type: 'separator' },
+      {
+        label: 'Size',
+        submenu: [
+          { 
+            label: 'Small (320×450)', 
+            type: 'radio',
+            checked: this.loadSettings().size === 'small',
+            click: () => this.setSizePreset('small') 
+          },
+          { 
+            label: 'Medium (380×600)', 
+            type: 'radio',
+            checked: this.loadSettings().size === 'medium',
+            click: () => this.setSizePreset('medium') 
+          },
+          { 
+            label: 'Large (450×750)', 
+            type: 'radio',
+            checked: this.loadSettings().size === 'large',
+            click: () => this.setSizePreset('large') 
+          },
+        ],
+      },
       {
         label: 'Opacity',
         submenu: [
@@ -223,6 +287,98 @@ export class WindowManager {
   }
 
   /**
+   * Toggle desktop widget mode
+   */
+  toggleDesktopWidget(enabled: boolean): void {
+    const settings = this.loadSettings();
+    settings.desktopWidget = enabled;
+    
+    // Save settings first
+    try {
+      fs.writeFileSync(this.settingsPath, JSON.stringify(settings, null, 2));
+    } catch (error) {
+      console.error('Failed to save window settings:', error);
+    }
+    
+    // Recreate window with new settings
+    const bounds = this.window?.getBounds();
+    if (this.window) {
+      this.window.destroy();
+    }
+    
+    this.createWindow();
+    
+    // Restore bounds if available
+    if (bounds && this.window) {
+      this.window.setBounds(bounds);
+    }
+  }
+
+  /**
+   * Set window size preset
+   */
+  setSizePreset(size: 'small' | 'medium' | 'large'): void {
+    if (!this.window) return;
+    
+    const preset = this.sizePresets[size];
+    if (!preset) return;
+    
+    const currentBounds = this.window.getBounds();
+    this.window.setBounds({
+      x: currentBounds.x,
+      y: currentBounds.y,
+      width: preset.width,
+      height: preset.height,
+    });
+    
+    // Update settings
+    const settings = this.loadSettings();
+    settings.size = size;
+    settings.width = preset.width;
+    settings.height = preset.height;
+    
+    try {
+      fs.writeFileSync(this.settingsPath, JSON.stringify(settings, null, 2));
+    } catch (error) {
+      console.error('Failed to save window settings:', error);
+    }
+  }
+
+  /**
+   * Get available size presets
+   */
+  getSizePresets(): Record<string, SizePreset> {
+    return this.sizePresets;
+  }
+
+  /**
+   * Set custom window size
+   */
+  setCustomSize(width: number, height: number): void {
+    if (!this.window) return;
+    
+    const currentBounds = this.window.getBounds();
+    this.window.setBounds({
+      x: currentBounds.x,
+      y: currentBounds.y,
+      width,
+      height,
+    });
+    
+    // Update settings
+    const settings = this.loadSettings();
+    settings.size = 'custom';
+    settings.width = width;
+    settings.height = height;
+    
+    try {
+      fs.writeFileSync(this.settingsPath, JSON.stringify(settings, null, 2));
+    } catch (error) {
+      console.error('Failed to save window settings:', error);
+    }
+  }
+
+  /**
    * Get current window instance
    */
   getWindow(): BrowserWindow | null {
@@ -269,6 +425,7 @@ export class WindowManager {
 
     try {
       const bounds = this.window.getBounds();
+      const currentSettings = this.loadSettings();
       const settings: WindowSettings = {
         x: bounds.x,
         y: bounds.y,
@@ -277,6 +434,8 @@ export class WindowManager {
         alwaysOnTop: this.window.isAlwaysOnTop(),
         showInTaskbar: true, // We'll track this in settings instead
         opacity: this.window.getOpacity(),
+        desktopWidget: currentSettings.desktopWidget, // Preserve desktop widget setting
+        size: currentSettings.size, // Preserve size setting
       };
 
       fs.writeFileSync(this.settingsPath, JSON.stringify(settings, null, 2));

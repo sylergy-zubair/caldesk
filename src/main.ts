@@ -7,6 +7,7 @@ import { GoogleCalendarService } from './services/googleCalendar.js';
 import { TokenStorageService } from './services/tokenStorage.js';
 import { WindowManager } from './services/windowManager.js';
 import { AutoStartManager } from './services/autoStart.js';
+import { notificationService } from './services/notificationService.js';
 
 // Load environment variables
 dotenv.config();
@@ -121,13 +122,13 @@ const setupIpcHandlers = () => {
     }
   });
 
-  ipcMain.handle('get-todays-events', async () => {
+  ipcMain.handle('get-todays-events', async (event, calendarIds?: string[]) => {
     try {
       const tokens = await tokenStorage.getTokens();
       if (!tokens) throw new Error('Not authenticated');
       
       calendarService.initialize(tokens);
-      return await calendarService.getTodaysEvents();
+      return await calendarService.getTodaysEvents(calendarIds);
     } catch (error) {
       throw new Error(`Failed to get today's events: ${error}`);
     }
@@ -201,6 +202,41 @@ const setupIpcHandlers = () => {
     return AutoStartManager.isEnabled();
   });
 
+  // Desktop widget controls
+  ipcMain.handle('toggle-desktop-widget', (event, enabled: boolean) => {
+    windowManager?.toggleDesktopWidget(enabled);
+  });
+
+  // Window customization
+  ipcMain.handle('set-size-preset', (event, size: 'small' | 'medium' | 'large') => {
+    windowManager?.setSizePreset(size);
+  });
+
+  ipcMain.handle('set-custom-size', (event, width: number, height: number) => {
+    windowManager?.setCustomSize(width, height);
+  });
+
+  ipcMain.handle('set-opacity', (event, opacity: number) => {
+    windowManager?.setOpacity(opacity);
+  });
+
+  ipcMain.handle('get-size-presets', () => {
+    return windowManager?.getSizePresets() || {};
+  });
+
+  // Notification controls
+  ipcMain.handle('schedule-event-notifications', (event, events) => {
+    notificationService.scheduleEventNotifications(events);
+  });
+
+  ipcMain.handle('show-notification', (event, title: string, body: string, urgency?: 'low' | 'normal' | 'critical') => {
+    notificationService.showNotification(title, body, urgency);
+  });
+
+  ipcMain.handle('clear-notifications', () => {
+    notificationService.clearAllNotifications();
+  });
+
   // Settings
   ipcMain.handle('save-settings', async (event, settings) => {
     // TODO: Implement settings storage
@@ -234,10 +270,11 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  // Clean up window manager when quitting
+  // Clean up services when quitting
   if (windowManager) {
     windowManager.destroy();
   }
+  notificationService.destroy();
 });
 
 // Security: Prevent new window creation
